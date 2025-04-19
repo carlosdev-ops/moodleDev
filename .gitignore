@@ -55,3 +55,32 @@ moodle-plugin-ci.phar
 .hugo_build.lock
 phpcs.xml
 jsconfig.json
+
+# 🌍 Règles officielles de Moodle (core)
+lib/amd/build/
+lib/amd/src/
+lib/yui/build/
+theme/*/style/
+theme/*/javascript/
+theme/*/pix/
+theme/*/pix_plugins/
+theme/*/fonts/
+theme/*/less/
+theme/*/scss/
+theme/*/templates/
+*.iml
+vendor/
+node_modules/
+
+# ⚙️ Fichiers de déploiement locaux
+config.php
+moodledata/
+backup/
+*.log
+*.bak
+*.tmp
+*.swp
+*.swo
+.DS_Store
+.idea/
+.vscode/
