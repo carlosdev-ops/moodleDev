@@ -205,42 +205,40 @@ class report_builder {
                 [$session_in_sql, $session_in_params] = $DB->get_in_or_equal($sessionids, SQL_PARAMS_NAMED, 'sids');
                 [$role_in_sql, $role_in_params] = $DB->get_in_or_equal($trainer_role_ids, SQL_PARAMS_NAMED, 'rids');
 
+                // Get all user name fields required by fullname().
+                $user_fields = \core_user\fields::for_name();
+                $user_fields_sql = $user_fields->get_sql('u', false, '', '', false);
+
+                // First column must be unique for get_records_sql() - use composite key.
                 $f2f_trainers_sql = "
                     SELECT
+                        CONCAT(fsr.sessionid, '_', u.id) AS id,
                         fsr.sessionid,
-                        fsr.userid
+                        u.id AS userid,
+                        {$user_fields_sql->selects}
                     FROM
                         {facetoface_session_roles} fsr
+                    JOIN
+                        {user} u ON u.id = fsr.userid
+                    {$user_fields_sql->joins}
                     WHERE
                         fsr.sessionid {$session_in_sql} AND fsr.roleid {$role_in_sql}
                 ";
-                $f2f_trainers_params = array_merge($session_in_params, $role_in_params);
+                $f2f_trainers_params = array_merge(
+                    $session_in_params,
+                    $role_in_params,
+                    $user_fields_sql->params
+                );
 
                 $f2f_trainers_records = $DB->get_records_sql($f2f_trainers_sql, $f2f_trainers_params);
 
+                $final_trainers_map = [];
                 foreach ($f2f_trainers_records as $record) {
-                    $trainers_map[(int)$record->sessionid][] = (int)$record->userid;
+                    $final_trainers_map[(int)$record->sessionid][] = $record;
                 }
 
                 // If we found trainers via F2F specific table, we prioritize that.
-                if (!empty($trainers_map)) {
-                    // Preload user objects for these trainers.
-                    $all_trainer_ids = [];
-                    foreach ($trainers_map as $sids) {
-                        $all_trainer_ids = array_merge($all_trainer_ids, $sids);
-                    }
-                    $all_trainer_ids = array_unique($all_trainer_ids);
-                    [$user_in_sql, $user_in_params] = $DB->get_in_or_equal($all_trainer_ids, SQL_PARAMS_NAMED, 'uids');
-                    $users = $DB->get_records_select('user', "id {$user_in_sql}", $user_in_params, '', 'id, firstname, lastname, alternatename');
-
-                    $final_trainers_map = [];
-                    foreach ($trainers_map as $session_id => $user_ids) {
-                        foreach ($user_ids as $user_id) {
-                            if (isset($users[$user_id])) {
-                                $final_trainers_map[$session_id][] = $users[$user_id];
-                            }
-                        }
-                    }
+                if (!empty($final_trainers_map)) {
                     return $final_trainers_map;
                 }
             }
@@ -255,52 +253,50 @@ class report_builder {
         [$course_in_sql, $course_in_params] = $DB->get_in_or_equal($courseids, SQL_PARAMS_NAMED, 'cids');
         [$role_in_sql, $role_in_params] = $DB->get_in_or_equal($trainer_role_ids, SQL_PARAMS_NAMED, 'rids');
 
+        // Get all user name fields required by fullname().
+        $user_fields = \core_user\fields::for_name();
+        $user_fields_sql = $user_fields->get_sql('u', false, '', '', false);
+
+        // First column must be unique for get_records_sql() - use composite key with role assignment ID.
         $sql = "
             SELECT
-                ra.userid,
-                ctx.instanceid AS courseid
+                CONCAT(ra.id, '_', ctx.instanceid) AS id,
+                u.id AS userid,
+                ctx.instanceid AS courseid,
+                {$user_fields_sql->selects}
             FROM
                 {role_assignments} ra
             JOIN
                 {context} ctx ON ctx.id = ra.contextid
+            JOIN
+                {user} u ON u.id = ra.userid
+            {$user_fields_sql->joins}
             WHERE
                 ctx.contextlevel = :contextlevelcourse AND
                 ctx.instanceid {$course_in_sql} AND
                 ra.roleid {$role_in_sql}
         ";
-        $params = array_merge($course_in_params, $role_in_params, ['contextlevelcourse' => CONTEXT_COURSE]);
+        $params = array_merge(
+            $course_in_params,
+            $role_in_params,
+            $user_fields_sql->params,
+            ['contextlevelcourse' => CONTEXT_COURSE]
+        );
 
         $raw_course_trainers = $DB->get_records_sql($sql, $params);
 
         $course_to_trainers = [];
         foreach ($raw_course_trainers as $rt) {
-            $course_to_trainers[(int)$rt->courseid][] = (int)$rt->userid;
+            $course_to_trainers[(int)$rt->courseid][] = $rt;
         }
 
-        // Map course trainers to sessions.
+        // Map course trainers to sessions and return user objects directly.
+        $final_trainers_map = [];
         foreach ($sessions as $session) {
             $session_id = (int)$session->sessionid;
             $courseid = (int)$session->courseid;
             if (isset($course_to_trainers[$courseid])) {
-                $trainers_map[$session_id] = array_unique($course_to_trainers[$courseid]);
-            }
-        }
-
-        // Preload user objects for all trainers found via fallback.
-        $all_trainer_ids = [];
-        foreach ($trainers_map as $sids) {
-            $all_trainer_ids = array_merge($all_trainer_ids, $sids);
-        }
-        $all_trainer_ids = array_unique($all_trainer_ids);
-        [$user_in_sql_2, $user_in_params_2] = $DB->get_in_or_equal($all_trainer_ids, SQL_PARAMS_NAMED, 'uids2');
-        $users = $DB->get_records_select('user', "id {$user_in_sql_2}", $user_in_params_2, '', 'id, firstname, lastname, alternatename');
-
-        $final_trainers_map = [];
-        foreach ($trainers_map as $session_id => $user_ids) {
-            foreach ($user_ids as $user_id) {
-                if (isset($users[$user_id])) {
-                    $final_trainers_map[$session_id][] = $users[$user_id];
-                }
+                $final_trainers_map[$session_id] = $course_to_trainers[$courseid];
             }
         }
 

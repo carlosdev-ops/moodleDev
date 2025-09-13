@@ -211,7 +211,9 @@ class sessions_table extends \table_sql {
             }
 
             if ($canviewprofile) {
-                $url = new \moodle_url('/user/profile.php', ['id' => $user->id]);
+                // Use userid field as returned by get_session_trainers() SQL query.
+                $user_id = isset($user->userid) ? $user->userid : $user->id;
+                $url = new \moodle_url('/user/profile.php', ['id' => $user_id]);
                 $trainer_links[] = \html_writer::link($url, fullname($user, true));
             } else {
                 $trainer_links[] = fullname($user, true);
