@@ -93,19 +93,18 @@ class sessions_table extends \table_sql {
     /**
      * Overrides parent method to preload trainers after fetching records.
      *
-     * @return array The fetched records.
+     * @param int $pagesize The page size.
+     * @param bool $useinitialsbar Whether to use initials bar.
      */
-    protected function get_records(): array {
-        $records = parent::get_records(); // Get the paginated sessions from the base class.
+    public function query_db($pagesize, $useinitialsbar = true): void {
+        parent::query_db($pagesize, $useinitialsbar);
 
-        if (empty($records)) {
-            return $records;
+        if (empty($this->rawdata)) {
+            return;
         }
 
         // Preload trainers for all fetched sessions.
-        $this->trainers_map = report_builder::get_session_trainers($records);
-
-        return $records;
+        $this->trainers_map = report_builder::get_session_trainers($this->rawdata);
     }
 
     /**
